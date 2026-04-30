@@ -1,12 +1,14 @@
 import {
   Injectable,
   Logger,
+  BadRequestException,
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { Prisma } from '@prisma/client';
+import { File as MulterFile } from 'multer';
+import { Candidate, Prisma } from '../../prisma/generated/prisma';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import {
@@ -29,22 +31,29 @@ export class CandidateService {
   //  Submit new application 
   async submitApplication(
     dto: CreateCandidateDto,
-    resumeFile?: Express.Multer.File,
+    resumeFile?: MulterFile,
   ) {
-    this.logger.log(
-      `New application: ${dto.firstName} ${dto.lastName} <${dto.email}> → ${dto.position}`,
-    );
+    const yearsOfExp = Number(dto.yearsOfExp);
 
-    // 1. Upload resume (if provided)
-    let resumeUrl: string | null = null;
-    if (resumeFile) {
-      const upload = await this.storage.upload(resumeFile);
-      resumeUrl = upload.url;
-      this.logger.log(`Resume uploaded → ${upload.key} (${upload.size} bytes)`);
+    if (!Number.isInteger(yearsOfExp) || yearsOfExp < 0) {
+      throw new BadRequestException('yearsOfExp must be a non-negative integer.');
     }
 
+    this.logger.log(
+      `New application: ${dto.firstName} ${dto.lastName} <${dto.email}> -> ${dto.position}`,
+    );
+
+    if (!resumeFile) {
+      throw new BadRequestException('Resume file is required.');
+    }
+
+    // 1. Upload resume (if provided)
+    const upload = await this.storage.upload(resumeFile);
+    const resumeUrl = upload.url;
+    this.logger.log(`Resume uploaded -> ${upload.key} (${upload.size} bytes)`);
+
     // 2. Persist to database
-    let candidate: Awaited<ReturnType<typeof this.prisma.candidate.create>>;
+    let candidate: Candidate;
     try {
       candidate = await this.prisma.candidate.create({
         data: {
@@ -53,8 +62,8 @@ export class CandidateService {
           email: dto.email,
           phone: dto.phone,
           position: dto.position,
-          yearsOfExp: dto.yearsOfExp,
-          coverLetter: dto.coverLetter,
+          yearsOfExp,
+          coverLetterUrl: dto.coverLetterUrl,
           resumeUrl,
           status: 'PENDING',
         },
@@ -87,7 +96,7 @@ export class CandidateService {
       payload,
       {
         // Job-level options (override queue defaults)
-        priority: this.resolvePriority(dto.yearsOfExp),
+        priority: this.resolvePriority(yearsOfExp),
         delay: 0,
       },
     );
@@ -113,7 +122,7 @@ export class CandidateService {
       this.prisma.candidate.findMany({
         skip,
         take,
-        where: status ? { status: status as Prisma.EnumApplicationStatusFilter } : undefined,
+        where: status ? { status } : undefined,
         orderBy: { createdAt: 'desc' },
         select: {
           id: true,
@@ -127,7 +136,7 @@ export class CandidateService {
         },
       }),
       this.prisma.candidate.count({
-        where: status ? { status: status as Prisma.EnumApplicationStatusFilter } : undefined,
+        where: status ? { status } : undefined,
       }),
     ]);
 
@@ -158,7 +167,7 @@ export class CandidateService {
   //  Helpers 
 
   /**
-   * Higher yearsOfExp → lower priority number → processed first in BullMQ.
+   * Higher yearsOfExp -> lower priority number -> processed first in BullMQ.
    * Priority 1 (highest) ... 10 (lowest)
    */
   private resolvePriority(yearsOfExp?: number): number {
@@ -169,4 +178,3 @@ export class CandidateService {
     return 5;
   }
 }
-

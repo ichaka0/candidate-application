@@ -13,9 +13,10 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
-import { CandidatesService } from './candidates.service';
 import { CreateCandidateDto } from './dto/create-candidate.dto';
-import { FileValidationPipe } from '../common/pipes/file-validation.pipe';
+import { CandidateService } from './candidate.service';
+import { File as MulterFile } from 'multer';
+
 
 //  Multer config 
 // Using memoryStorage so the buffer is available for both validation and
@@ -30,7 +31,7 @@ const multerOptions = {
 
 @Controller('candidates')
 export class CandidateController {
-  constructor(private readonly candidatesService: CandidatesService) {}
+  constructor(private readonly candidateService: CandidateService) {}
 
   //  POST /candidates/apply
   @Post('apply')
@@ -38,9 +39,9 @@ export class CandidateController {
   @UseInterceptors(FileInterceptor('resume', multerOptions))
   async apply(
     @Body() dto: CreateCandidateDto,
-    @UploadedFile(FileValidationPipe) resume?: Express.Multer.File,
+    @UploadedFile() resume?: MulterFile,
   ) {
-    return this.candidatesService.submitApplication(dto, resume);
+    return this.candidateService.submitApplication(dto, resume);
   }
 
   //  GET /candidates
@@ -50,7 +51,7 @@ export class CandidateController {
     @Query('take') take?: string,
     @Query('status') status?: string,
   ) {
-    return this.candidatesService.findAll({
+    return this.candidateService.findAll({
       skip: skip ? parseInt(skip, 10) : 0,
       take: take ? parseInt(take, 10) : 20,
       status,
@@ -60,12 +61,12 @@ export class CandidateController {
   //  GET /candidates/queue/stats
   @Get('queue/stats')
   queueStats() {
-    return this.candidatesService.getQueueStats();
+    return this.candidateService.getQueueStats();
   }
 
   //  GET /candidates/:id
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.candidatesService.findOne(id);
+    return this.candidateService.findOne(id);
   }
 }

@@ -3,11 +3,10 @@ import {
   Logger,
   InternalServerErrorException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import * as path from 'path';
 import * as fs from 'fs/promises';
-import { v4 as uuidv4 } from 'uuid';
-import { S3Client, PutObjectCommand,DeleteObjectCommand} from '@aws-sdk/client-s3';
+import { randomUUID } from 'crypto';
+import { File as MulterFile } from 'multer';
 
 
 export interface UploadResult {
@@ -23,14 +22,14 @@ export class StorageService {
   private readonly mode: string;
   private readonly uploadDest: string;
 
-  constructor(private readonly config: ConfigService) {
-    this.mode = config.get<string>('STORAGE_MODE', 'local');
-    this.uploadDest = config.get<string>('UPLOAD_DEST', './uploads');
+  constructor() {
+    this.mode = process.env.STORAGE_MODE ?? 'local';
+    this.uploadDest = process.env.UPLOAD_DEST ?? './uploads';
   }
 
   //  Public API
 
-  async upload(file: Express.Multer.File): Promise<UploadResult> {
+  async upload(file: MulterFile): Promise<UploadResult> {
     if (this.mode === 's3') {
       return this.uploadToS3(file);
     }
@@ -45,16 +44,16 @@ export class StorageService {
   }
 
   //  Local (mock S3) 
-  private async uploadLocally(file: Express.Multer.File): Promise<UploadResult> {
+  private async uploadLocally(file: MulterFile): Promise<UploadResult> {
     const ext = path.extname(file.originalname);
-    const key = `resumes/${uuidv4()}${ext}`;
+    const key = `resumes/${randomUUID()}${ext}`;
     const dest = path.join(this.uploadDest, key);
 
     // Ensure directory exists
     await fs.mkdir(path.dirname(dest), { recursive: true });
     await fs.writeFile(dest, file.buffer);
 
-    this.logger.log(`[local] Saved file → ${dest} (${file.size} bytes)`);
+    this.logger.log(`[local] Saved file -> ${dest} (${file.size} bytes)`);
 
     return {
       key,
@@ -76,38 +75,13 @@ export class StorageService {
 
   //  AWS S3 
 
-  private async uploadToS3(file: Express.Multer.File): Promise<UploadResult> {
-
-    const ext = path.extname(file.originalname);
-    const region = this.config.get('AWS_REGION');
-    const bucket = this.config.get('S3_BUCKET_NAME');
-   
-      const s3 = new S3Client({ region: this.config.get('AWS_REGION') });
-      const key = `resumes/${uuidv4()}${ext}`;
-     
-      await s3.send(new PutObjectCommand({
-        Bucket: this.config.get('S3_BUCKET_NAME'),
-        Key: key,
-        Body: file.buffer,
-        ContentType: file.mimetype,
-        ACL: 'private',
-      }));
-
-      return {
-        key,
-        url: `https://${this.config.get('S3_BUCKET_NAME')}.s3.${this.config.get('AWS_REGION')}.amazonaws.com/${key}`,
-        size: file.size,
-        mimetype: file.mimetype,
-      };
+  private async uploadToS3(_file: MulterFile): Promise<UploadResult> {
+    throw new InternalServerErrorException(
+      'S3 storage is not configured in this build.',
+    );
   }
 
   private async deleteFromS3(key: string): Promise<void> {
-
-        const s3 = new S3Client({ region: this.config.get('AWS_REGION') });
-        const bucket = this.config.get('S3_BUCKET_NAME');
-   
-      await s3.send(new DeleteObjectCommand({ Bucket, Key: key }));
-    
-    this.logger.warn(`[s3] deleteFromS3 not implemented for key: ${key}`);
+    this.logger.warn(`[s3] deleteFromS3 not configured for key: ${key}`);
   }
 }

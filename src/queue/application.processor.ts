@@ -6,7 +6,7 @@ import {
   CANDIDATE_QUEUE,
   JOB_TYPES,
   ProcessApplicationPayload,
-} from './queue.constants';
+} from '../queue/queue.constants';
 
 @Processor(CANDIDATE_QUEUE)
 export class ApplicationProcessor extends WorkerHost {
@@ -59,16 +59,11 @@ export class ApplicationProcessor extends WorkerHost {
       where: { id: candidateId },
       data: {
         status: 'UNDER_REVIEW',
-        metadata: {
-          processedAt: new Date().toISOString(),
-          processorJobId: job.id,
-          resumeParsed: resumeUrl !== null,
-        },
       },
     });
 
     this.logger.log(
-      `[process-application] ✓ candidateId=${candidateId} → status=UNDER_REVIEW`,
+      `[process-application] candidateId=${candidateId} -> status=UNDER_REVIEW`,
     );
 
 
