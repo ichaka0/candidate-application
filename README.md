@@ -1,98 +1,253 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Candidate Application Pipeline
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+A NestJS mini pipeline for processing candidate applications end-to-end:
+**HTTP → Validate → Upload resume → PostgreSQL → BullMQ background job**
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Stack
 
-## Description
+| Layer | Technology |
+|---|---|
+| Framework | NestJS 10 |
+| ORM | Prisma 5 + PostgreSQL |
+| Queue | BullMQ (Redis-backed) |
+| File storage | Local mock / AWS S3 (swap via `.env`) |
+| Validation | class-validator + class-transformer |
+| Testing | Jest |
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+---
 
-## Project setup
+## Quick start
+
+### 1. Infrastructure
 
 ```bash
-$ npm install
+docker compose up -d
+# starts PostgreSQL on :5432 and Redis on :6379
 ```
 
-## Compile and run the project
+### 2. Environment
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+cp .env.example .env
+# Edit DATABASE_URL / Redis settings if needed
 ```
 
-## Run tests
+### 3. Install & migrate
 
 ```bash
-# unit tests
-$ npm run test
+npm install
 
-# e2e tests
-$ npm run test:e2e
+# Generate Prisma client
+npx prisma generate
 
-# test coverage
-$ npm run test:cov
+# Create tables
+npx prisma migrate dev --name init
+
+# (Optional) seed sample data
+npx ts-node prisma/seed.ts
 ```
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+### 4. Run
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+npm run start:dev
+# API available at http://localhost:3000/api/v1
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+---
 
-## Resources
+## API endpoints
 
-Check out a few resources that may come in handy when working with NestJS:
+### Submit an application
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+```bash
+POST /api/v1/candidates/apply
+Content-Type: multipart/form-data
 
-## Support
+# Fields:
+#   firstName     string (required)
+#   lastName      string (required)
+#   email         email  (required, unique)
+#   position      enum   (required) — see Position enum
+#   yearsOfExp    int    (optional, 0-50)
+#   coverLetter   string (optional)
+#   resume        file   (optional, PDF/DOC/DOCX, max 10 MB)
+```
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+**curl example — no resume:**
+```bash
+curl -X POST http://localhost:3000/api/v1/candidates/apply \
+  -F "firstName=Ada" \
+  -F "lastName=Lovelace" \
+  -F "email=ada@example.com" \
+  -F "position=backend-engineer" \
+  -F "yearsOfExp=8"
+```
 
-## Stay in touch
+**curl example — with resume:**
+```bash
+curl -X POST http://localhost:3000/api/v1/candidates/apply \
+  -F "firstName=Alan" \
+  -F "lastName=Turing" \
+  -F "email=alan@example.com" \
+  -F "position=fullstack-engineer" \
+  -F "yearsOfExp=10" \
+  -F "resume=@./cv.pdf"
+```
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+**Response 201:**
+```json
+{
+  "message": "Application submitted successfully",
+  "candidateId": "550e8400-e29b-41d4-a716-446655440000",
+  "jobId": "1",
+  "status": "PENDING"
+}
+```
 
-## License
+---
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+### List candidates
+
+```bash
+GET /api/v1/candidates?skip=0&take=20&status=PENDING
+```
+
+### Get candidate by ID
+
+```bash
+GET /api/v1/candidates/:id
+```
+
+### Queue statistics
+
+```bash
+GET /api/v1/candidates/queue/stats
+```
+
+**Response:**
+```json
+{
+  "waiting": 2,
+  "active": 1,
+  "completed": 47,
+  "failed": 0,
+  "delayed": 0
+}
+```
+
+---
+
+## Data flow
+
+```
+POST /apply (multipart/form-data)
+      │
+      ▼
+CandidatesController
+  ├─ @UseInterceptors(FileInterceptor)   ← multer parses the file
+  └─ @UploadedFile(FileValidationPipe)  ← checks MIME + size
+      │
+      ▼
+CandidatesService.submitApplication()
+  │
+  ├─ 1. StorageService.upload(file)     ← saves to ./uploads/ (or S3)
+  │
+  ├─ 2. prisma.candidate.create(...)    ← persisted to PostgreSQL
+  │         status = PENDING
+  │
+  └─ 3. queue.add('process-application', payload)
+              │
+              ▼ (async, Redis-backed)
+        ApplicationProcessor.process()
+          ├─ Resume parsing (simulated)
+          ├─ Screening rules
+          └─ prisma.candidate.update()  ← status = UNDER_REVIEW
+```
+
+---
+
+## Switching to real AWS S3
+
+1. Install the SDK:
+   ```bash
+   npm install @aws-sdk/client-s3
+   ```
+
+2. Set `.env`:
+   ```
+   STORAGE_MODE=s3
+   AWS_REGION=us-east-1
+   AWS_ACCESS_KEY_ID=AKIA...
+   AWS_SECRET_ACCESS_KEY=...
+   S3_BUCKET_NAME=candidate-resumes
+   ```
+
+3. Uncomment the S3 implementation in `src/storage/storage.service.ts`.
+
+---
+
+## Available positions
+
+| Value | Description |
+|---|---|
+| `backend-engineer` | Backend / systems |
+| `frontend-engineer` | Frontend |
+| `fullstack-engineer` | Full-stack |
+| `data-engineer` | Data / ML |
+| `devops-engineer` | DevOps / infrastructure |
+| `product-manager` | Product |
+| `designer` | Design |
+| `other` | Other |
+
+---
+
+## Running tests
+
+```bash
+# Unit tests (no live DB or Redis needed)
+npm test
+
+# Watch mode
+npm run test:watch
+
+# Coverage
+npm run test:cov
+```
+
+---
+
+## Project structure
+
+```
+candidate-pipeline/
+├── prisma/
+│   ├── schema.prisma          # Candidate + JobApplication models
+│   └── seed.ts                # Sample data seeder
+├── src/
+│   ├── main.ts                # NestJS bootstrap
+│   ├── app.module.ts          # Root module (BullMQ, ConfigModule)
+│   ├── prisma/
+│   │   ├── prisma.module.ts   # Global Prisma module
+│   │   └── prisma.service.ts  # PrismaClient wrapper
+│   ├── storage/
+│   │   ├── storage.module.ts
+│   │   └── storage.service.ts # Local mock + S3 strategy
+│   ├── queue/
+│   │   ├── queue.constants.ts # Queue name, job types, payload types
+│   │   ├── queue.module.ts    # BullMQ registration
+│   │   └── application.processor.ts  # Background worker
+│   ├── candidates/
+│   │   ├── candidates.module.ts
+│   │   ├── candidates.controller.ts  # REST endpoints
+│   │   ├── candidates.service.ts     # Business logic
+│   │   ├── candidates.service.spec.ts # Unit tests
+│   │   └── dto/
+│   │       └── create-candidate.dto.ts
+│   └── common/
+│       └── pipes/
+│           └── file-validation.pipe.ts  # MIME + size guard
+├── docker-compose.yml         # PostgreSQL + Redis
+├── .env.example
+└── package.json
+```

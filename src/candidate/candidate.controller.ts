@@ -1,34 +1,71 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
-import { CandidateService } from './candidate.service';
+import {
+  Controller,
+  Post,
+  Get,
+  Param,
+  Body,
+  Query,
+  UploadedFile,
+  UseInterceptors,
+  ParseUUIDPipe,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { CandidatesService } from './candidates.service';
 import { CreateCandidateDto } from './dto/create-candidate.dto';
-import { UpdateCandidateDto } from './dto/update-candidate.dto';
+import { FileValidationPipe } from '../common/pipes/file-validation.pipe';
 
-@Controller('candidate')
+//  Multer config 
+// Using memoryStorage so the buffer is available for both validation and
+// the storage service
+const multerOptions = {
+  storage: memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10 MB hard stop (multer-level)
+    files: 1,
+  },
+};
+
+@Controller('candidates')
 export class CandidateController {
-  constructor(private readonly candidateService: CandidateService) {}
+  constructor(private readonly candidatesService: CandidatesService) {}
 
-  @Post()
-  create(@Body() createCandidateDto: CreateCandidateDto) {
-    return this.candidateService.create(createCandidateDto);
+  //  POST /candidates/apply
+  @Post('apply')
+  @HttpCode(HttpStatus.CREATED)
+  @UseInterceptors(FileInterceptor('resume', multerOptions))
+  async apply(
+    @Body() dto: CreateCandidateDto,
+    @UploadedFile(FileValidationPipe) resume?: Express.Multer.File,
+  ) {
+    return this.candidatesService.submitApplication(dto, resume);
   }
 
+  //  GET /candidates
   @Get()
-  findAll() {
-    return this.candidateService.findAll();
+  findAll(
+    @Query('skip') skip?: string,
+    @Query('take') take?: string,
+    @Query('status') status?: string,
+  ) {
+    return this.candidatesService.findAll({
+      skip: skip ? parseInt(skip, 10) : 0,
+      take: take ? parseInt(take, 10) : 20,
+      status,
+    });
   }
 
+  //  GET /candidates/queue/stats
+  @Get('queue/stats')
+  queueStats() {
+    return this.candidatesService.getQueueStats();
+  }
+
+  //  GET /candidates/:id
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.candidateService.findOne(+id);
-  }
-
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateCandidateDto: UpdateCandidateDto) {
-    return this.candidateService.update(+id, updateCandidateDto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.candidateService.remove(+id);
+  findOne(@Param('id', ParseUUIDPipe) id: string) {
+    return this.candidatesService.findOne(id);
   }
 }
